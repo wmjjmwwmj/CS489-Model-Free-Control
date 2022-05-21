@@ -115,7 +115,8 @@ def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
 
     f = open(args.env_name+".csv", 'a')
     avg_reward = float(sum(e_rewards))/float(n_episode)
-    std = np.array(e_rewards).std()
+    min_reward = min(e_rewards)
+    max_reward = max(e_rewards)
     print(f"The average reward is {avg_reward:.5f}")
     if avg_reward > best_reward:
         print("New best reward, save model to disk!!!")
@@ -126,7 +127,7 @@ def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
             checkpoint_name = "Double" + checkpoint_name
         torch.save(policy_net.state_dict(), "models/"+checkpoint_name)
         best_reward = avg_reward
-    f.write("%f, %f, %d, %d\n" % (avg_reward, std, step, n_episode))
+    f.write("%f, %f, %f, %d, %d\n" % (avg_reward, min_reward, max_reward, step, n_episode))
     f.close()
 
 frame_q = deque(maxlen=5)
@@ -168,7 +169,7 @@ for step in range(NUM_STEPS):
         target_net.load_state_dict(policy_net.state_dict())
     # evaluate current model performance
     if step % EVALUATE_FREQ == 0:
-        evaluate(step, policy_net, device, env_raw, action_dim, n_episode=5)
+        evaluate(step, policy_net, device, env_raw, action_dim, n_episode=20)
 
 
 
