@@ -32,6 +32,18 @@ class ReplayBuffer:
 
         return states, actions, rewards, next_states, dones
 
+    def get_all(self):
+        samples = [self.memory[idx] for idx in range(len(self.memory))]
+        states, actions, rewards, next_states, dones = zip(*samples)
+
+        states = torch.tensor(np.concatenate(states)).to(self.device)
+        next_states = torch.tensor(np.concatenate(next_states)).to(self.device)
+        actions = torch.tensor(np.concatenate(actions)).to(self.device)
+        rewards = torch.tensor(rewards).to(self.device)
+        dones = torch.tensor(dones).to(self.device)
+
+        return states, actions, rewards, next_states, dones
+
     def __len__(self):
         return len(self.memory)
 
@@ -90,9 +102,30 @@ class PrioritizedReplay:
     def __len__(self):
         return len(self.memory)
 
-class Actor(nn.Module):
+class PPOActor(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_size=256):
-        super(Actor, self).__init__()
+        super(PPOActor, self).__init__()
+        self.fc1 = nn.Linear(state_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.mu = nn.Linear(hidden_size, action_dim)
+        self.log_std = nn.Parameter(torch.zeros(1, action_dim))
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        torch.nn.init.xavier_uniform_(self.fc1.weight)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
+        torch.nn.init.xavier_uniform_(self.mu.weight)
+
+    def forward(self, states):
+        x = torch.tanh(self.fc1(states))
+        x = torch.tanh(self.fc2(x))
+        mu = self.mu(x)
+        std = torch.exp(self.log_std)
+        return mu, std
+
+class SACActor(nn.Module):
+    def __init__(self, state_dim, action_dim, hidden_size=256):
+        super(SACActor, self).__init__()
         self.fc1 = nn.Linear(state_dim, hidden_size)
         self.fc2 = nn.Linear(hidden_size, hidden_size)
         self.mu = nn.Linear(hidden_size, action_dim)

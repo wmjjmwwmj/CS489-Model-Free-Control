@@ -30,10 +30,14 @@ def grad_false(network):
     for param in network.parameters():
         param.requires_grad = False
 
-def log_density(x, mu, std, logstd):
-    var = std.pow(2)
-    log_density = -(x - mu).pow(2) / (2 * var) - 0.5 * math.log(2 * math.pi) - logstd
-    return log_density.sum(1, keepdim=True)
+def make_mini_batch(*value):
+    mini_batch_size = value[0]
+    full_batch_size = len(value[1])
+    full_indices = np.arange(full_batch_size)
+    np.random.shuffle(full_indices)
+    for i in range(full_batch_size // mini_batch_size):
+        indices = full_indices[mini_batch_size * i: mini_batch_size * (i + 1)]
+        yield [x[indices] for x in value[1:]]
 
 class RunningMeanStats:
     def __init__(self, n=10):

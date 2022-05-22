@@ -18,19 +18,22 @@ class PPOAgent:
 
         # hyper-parameters
         self.num_steps = 3e6
-        self.batch_size = 256
+        self.batch_size = 64
         self.hidden_size = 256
-        self.memory_size = 1e6
+        self.traj_len = 2048
+        self.train_epoch = 10
+        self.ent_coef = 0.01
+        self.critic_coef = 0.5
         self.lr = 0.0003
         self.clip_param = 0.2
+        self.max_grad_norm = 0.5
+        self.max_clip = 0.2
         self.gamma = 0.99
-        self.lam = 0.98
-        self.start_steps = 10000
+        self.lam = 0.95
         self.log_interval = 10
-        self.eval_interval = 1000
 
         # networks
-        self.policy = Actor(self.env.observation_space.shape[0],
+        self.policy = PPOActor(self.env.observation_space.shape[0],
                             self.env.action_space.shape[0],
                             hidden_size=self.hidden_size).to(self.device)
         self.critic = VCritic(self.env.observation_space.shape[0],
@@ -40,74 +43,103 @@ class PPOAgent:
         self.policy_optimizer = Adam(self.policy.parameters(), lr=self.lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=self.lr)
 
-        self.memory = ReplayBuffer(self.memory_size, self.device)
+        self.memory = ReplayBuffer(self.traj_len, self.device)
 
         self.train_rewards = RunningMeanStats(self.log_interval)
         self.steps = 0
-        self.learning_steps = 0
         self.episodes = 0
 
+    def get_gae(self, states, rewards, next_states, dones):
+        values = self.critic(states).detach()
+        td_target = rewards + self.gamma * self.critic(next_states) * (1 - dones)
+        delta = td_target - values
+        delta = delta.detach().cpu().numpy()
+        advantage_lst = []
+        advantage = 0.0
+        for idx in reversed(range(len(delta))):
+            if dones[idx] == 1:
+                advantage = 0.0
+            advantage = self.gamma * self.lam * advantage + delta[idx][0]
+            advantage_lst.append([advantage])
+        advantage_lst.reverse()
+        advantages = torch.tensor(advantage_lst, dtype=torch.float).to(self.device)
+        return values, advantages
+
+    def learn(self):
+        states, actions, rewards, next_states, dones = self.memory.get_all()
+
+        old_values, advantages = self.get_gae(states, rewards, next_states, dones)
+        returns = advantages + old_values
+        advantages = (advantages - advantages.mean())/(advantages.std()+1e-3)
+        old_mus, old_sigmas = self.policy(states)
+        old_dist = torch.distributions.Normal(old_mus, old_sigmas)
+        old_log_probs = old_dist.log_prob(actions).sum(1, keepdim=True)
+
+        for i in range(self.train_epoch):
+            for state, action, advantage, return_, old_value, old_log_prob \
+                in make_mini_batch(self.batch_size, states, actions, advantages, returns, old_values, old_log_probs):
+                curr_mu, curr_sigma = self.policy(state)
+                value = self.critic(state)
+                curr_dist = torch.distributions.Normal(curr_mu, curr_sigma)
+                entropy = curr_dist.entropy() * self.ent_coef
+                curr_log_prob = curr_dist.log_prob(action).sum(1, keepdim=True)
+
+                # policy clipping
+                ratio = torch.exp(curr_log_prob - old_log_prob.detach())
+                surr1 = ratio * advantage
+                surr2 = torch.clamp(ratio, 1-self.max_clip, 1+self.max_clip) * advantage
+                actor_loss = (-torch.min(surr1, surr2)-entropy).mean()
+
+                # value clipping (PPO2 technic)
+                old_value_clipped = old_value + (value - old_value).clamp(-self.max_clip, self.max_clip)
+                value_loss = (value - return_.detach().float()).pow(2)
+                value_loss_clipped = (old_value_clipped - return_.detach().float()).pow(2)
+                critic_loss = 0.5 * self.critic_coef * torch.max(value_loss, value_loss_clipped).mean()
+
+                self.policy_optimizer.zero_grad()
+                actor_loss.backward()
+                nn.utils.clip_grad_norm_(self.policy.parameters(), self.max_grad_norm)
+                self.policy_optimizer.step()
+
+                self.critic_optimizer.zero_grad()
+                critic_loss.backward()
+                nn.utils.clip_grad_norm_(self.critic.parameters(), self.max_grad_norm)
+                self.critic_optimizer.step()
+
     def run(self):
+        episode_reward = 0.
+        episode_steps = 0
+        state = self.env.reset()
         while True:
-            self.train_episode()
+            for t in range(self.traj_len):
+                mu, sigma = self.policy(torch.FloatTensor(state).unsqueeze(0).to(self.device))
+                dist = torch.distributions.Normal(mu, sigma[0])
+                action = dist.sample().cpu().numpy()
+                next_state, reward, done, _ = self.env.step(action)
+                self.steps += 1
+                episode_steps += 1
+                episode_reward += reward
+
+                self.memory.append(state, action, reward, next_state, done)
+                state = next_state
+
+                if done:
+                    self.train_rewards.append(episode_reward)
+                    self.episodes += 1
+                    print(f'episode: {self.episodes:<4}  '
+                          f'episode steps: {episode_steps:<4}  '
+                          f'reward: {episode_reward:<5.1f}')
+                    # reset episode
+                    episode_reward = 0.
+                    episode_steps = 0
+                    state = self.env.reset()
+
+            self.learn()
+            self.evaluate()
+            self.save_models()
+
             if self.steps > self.num_steps:
                 break
-
-    def is_update(self):
-        return len(self.memory) > self.batch_size and self.steps >= self.start_steps
-
-    def act(self, state):
-        if self.start_steps > self.steps:
-            action = self.env.action_space.sample()
-        else:
-            action = self.explore(state)
-        return action
-
-    def explore(self, state):
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            action, _, _ = self.policy.sample(state)
-        return action.cpu().numpy().reshape(-1)
-
-    def exploit(self, state):
-        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
-        with torch.no_grad():
-            _, _, action = self.policy.sample(state)
-        return action.cpu().numpy().reshape(-1)
-
-    def get_gae(self, rewards, masks, values):
-        rewards = torch.Tensor(rewards)
-        masks = torch.Tensor(masks)
-        returns = torch.zeros_like(rewards)
-        advants = torch.zeros_like(rewards)
-
-        running_returns = 0
-        previous_value = 0
-        running_advants = 0
-
-        for t in reversed(range(0, len(rewards))):
-            running_returns = rewards[t] + self.gamma * running_returns * masks[t]
-            running_tderror = rewards[t] + self.gamma * previous_value * masks[t] - values.data[t]
-            running_advants = running_tderror + self.gamma * self.lam * running_advants * masks[t]
-
-            returns[t] = running_returns
-            previous_value = values.data[t]
-            advants[t] = running_advants
-
-        advants = (advants - advants.mean()) / advants.std()
-        return returns, advants
-
-    def surrogate_loss(self, actor, advants, states, old_policy, actions, index):
-        mu, std, logstd = actor(torch.Tensor(states))
-        new_policy = log_density(actions, mu, std, logstd)
-        old_policy = old_policy[index]
-
-        ratio = torch.exp(new_policy - old_policy)
-        surrogate = ratio * advants
-        return surrogate, ratio
-
-    def train_episode(self):
-        pass
 
     def evaluate(self):
         episodes = 10
@@ -118,7 +150,8 @@ class PPOAgent:
             episode_reward = 0.
             done = False
             while not done:
-                action = self.exploit(state)
+                mu, sigma = self.policy(torch.FloatTensor(state).unsqueeze(0).to(self.device))
+                action = mu.detach().cpu().numpy()
                 next_state, reward, done, _ = self.env.step(action)
                 episode_reward += reward
                 state = next_state
@@ -165,7 +198,7 @@ class SACAgent:
         self.eval_interval = 1000
 
         # networks
-        self.policy = Actor(self.env.observation_space.shape[0],
+        self.policy = SACActor(self.env.observation_space.shape[0],
                             self.env.action_space.shape[0],
                             hidden_size=self.hidden_size).to(self.device)
         self.critic = TwinnedQCritic(self.env.observation_space.shape[0],
