@@ -1,5 +1,6 @@
 import random
 import cv2
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -112,6 +113,63 @@ class ReplayMemory:
 
     def __len__(self):
         return self.size
+
+class PrioritizedReplay:
+    def __init__(self, capacity, state_shape, device, alpha=0.6, beta_start=0.4, beta_annealing=0.001, epsilon=1e-4):
+        c, h, w = state_shape
+        self.alpha = alpha
+        self.capacity = capacity
+        self.device = device
+        self.beta = beta_start
+        self.epsilon = epsilon
+        self.beta_annealing = beta_annealing
+        self.m_states = torch.zeros((capacity, c, h, w), dtype=torch.uint8)
+        self.m_actions = torch.zeros((capacity, 1), dtype=torch.long)
+        self.m_rewards = torch.zeros((capacity, 1), dtype=torch.int8)
+        self.m_dones = torch.zeros((capacity, 1), dtype=torch.bool)
+        self.m_priority = torch.zeros((capacity,), dtype=torch.float32)
+        self.position = 0
+        self.size = 0
+
+    def push(self, state, action, reward, done):
+        self.m_states[self.position] = state
+        self.m_actions[self.position, 0] = action
+        self.m_rewards[self.position, 0] = reward
+        self.m_dones[self.position, 0] = done
+
+        max_prio = self.m_priority.max()[0] if self.size else 1.0
+        self.m_priority[self.position] = max_prio
+
+        self.position = (self.position + 1) % self.capacity
+        self.size = max(self.size, self.position)
+
+    def sample(self, batch_size):
+        prios = self.m_priority.squeeze().numpy()[:self.size]
+        probs = prios ** self.alpha
+        P = probs/probs.sum()
+
+        indices = np.random.choice(self.size, batch_size, p=P)
+        bs = self.m_states[indices, :4]  # state
+        bns = self.m_states[indices, 1:]  # next state
+        ba = self.m_actions[indices].to(self.device)
+        br = self.m_rewards[indices].to(self.device).float()
+        bd = self.m_dones[indices].to(self.device).float()
+        self.beta = min(1.-self.epsilon, self.beta+self.beta_annealing)
+
+        # compute importance sampling weight
+        weights = (self.size * P[indices]) ** (-self.beta)
+        weights /= weights.max()
+        weights = np.array(weights, dtype=np.float32)
+
+        return bs, ba, br, bns, bd, indices, weights
+
+    def update_priority(self, batch_indices, batch_priorities):
+        for idx, prio in zip(batch_indices, batch_priorities):
+            self.m_priority[idx] = abs(prio)+self.epsilon
+
+    def __len__(self):
+        return self.size
+
 
 def fp(n_frame):
     n_frame = torch.from_numpy(n_frame)

@@ -16,6 +16,127 @@ class PPOAgent:
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        # hyper-parameters
+        self.num_steps = 3e6
+        self.batch_size = 256
+        self.hidden_size = 256
+        self.memory_size = 1e6
+        self.lr = 0.0003
+        self.clip_param = 0.2
+        self.gamma = 0.99
+        self.lam = 0.98
+        self.start_steps = 10000
+        self.log_interval = 10
+        self.eval_interval = 1000
+
+        # networks
+        self.policy = Actor(self.env.observation_space.shape[0],
+                            self.env.action_space.shape[0],
+                            hidden_size=self.hidden_size).to(self.device)
+        self.critic = VCritic(self.env.observation_space.shape[0],
+                              self.hidden_size).to(self.device)
+
+        # optimizers
+        self.policy_optimizer = Adam(self.policy.parameters(), lr=self.lr)
+        self.critic_optimizer = Adam(self.critic.parameters(), lr=self.lr)
+
+        self.memory = ReplayBuffer(self.memory_size, self.device)
+
+        self.train_rewards = RunningMeanStats(self.log_interval)
+        self.steps = 0
+        self.learning_steps = 0
+        self.episodes = 0
+
+    def run(self):
+        while True:
+            self.train_episode()
+            if self.steps > self.num_steps:
+                break
+
+    def is_update(self):
+        return len(self.memory) > self.batch_size and self.steps >= self.start_steps
+
+    def act(self, state):
+        if self.start_steps > self.steps:
+            action = self.env.action_space.sample()
+        else:
+            action = self.explore(state)
+        return action
+
+    def explore(self, state):
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            action, _, _ = self.policy.sample(state)
+        return action.cpu().numpy().reshape(-1)
+
+    def exploit(self, state):
+        state = torch.FloatTensor(state).unsqueeze(0).to(self.device)
+        with torch.no_grad():
+            _, _, action = self.policy.sample(state)
+        return action.cpu().numpy().reshape(-1)
+
+    def get_gae(self, rewards, masks, values):
+        rewards = torch.Tensor(rewards)
+        masks = torch.Tensor(masks)
+        returns = torch.zeros_like(rewards)
+        advants = torch.zeros_like(rewards)
+
+        running_returns = 0
+        previous_value = 0
+        running_advants = 0
+
+        for t in reversed(range(0, len(rewards))):
+            running_returns = rewards[t] + self.gamma * running_returns * masks[t]
+            running_tderror = rewards[t] + self.gamma * previous_value * masks[t] - values.data[t]
+            running_advants = running_tderror + self.gamma * self.lam * running_advants * masks[t]
+
+            returns[t] = running_returns
+            previous_value = values.data[t]
+            advants[t] = running_advants
+
+        advants = (advants - advants.mean()) / advants.std()
+        return returns, advants
+
+    def surrogate_loss(self, actor, advants, states, old_policy, actions, index):
+        mu, std, logstd = actor(torch.Tensor(states))
+        new_policy = log_density(actions, mu, std, logstd)
+        old_policy = old_policy[index]
+
+        ratio = torch.exp(new_policy - old_policy)
+        surrogate = ratio * advants
+        return surrogate, ratio
+
+    def train_episode(self):
+        pass
+
+    def evaluate(self):
+        episodes = 10
+        returns = np.zeros((episodes,), dtype=np.float32)
+
+        for i in range(episodes):
+            state = self.env.reset()
+            episode_reward = 0.
+            done = False
+            while not done:
+                action = self.exploit(state)
+                next_state, reward, done, _ = self.env.step(action)
+                episode_reward += reward
+                state = next_state
+            returns[i] = episode_reward
+
+        mean_return = np.mean(returns)
+        print('-' * 60)
+        print(f'Num steps: {self.steps:<5}  '
+              f'reward: {mean_return:<5.1f}')
+        print('-' * 60)
+
+    def save_models(self):
+        self.policy.save(os.path.join(self.model_dir, 'policy.pth'))
+        self.critic.save(os.path.join(self.model_dir, 'critic.pth'))
+
+    def __del__(self):
+        self.env.close()
+
 class SACAgent:
     def __init__(self, env, entropy_tuning=True, per=False, log_dir=None):
         self.env = env

@@ -1,5 +1,6 @@
 from collections import deque
 import numpy as np
+import math
 import torch
 
 def to_batch(state, action, reward, next_state, done, device):
@@ -28,6 +29,11 @@ def hard_update(target, source):
 def grad_false(network):
     for param in network.parameters():
         param.requires_grad = False
+
+def log_density(x, mu, std, logstd):
+    var = std.pow(2)
+    log_density = -(x - mu).pow(2) / (2 * var) - 0.5 * math.log(2 * math.pi) - logstd
+    return log_density.sum(1, keepdim=True)
 
 class RunningMeanStats:
     def __init__(self, n=10):

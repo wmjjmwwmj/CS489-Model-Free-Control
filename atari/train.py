@@ -13,6 +13,7 @@ parser.add_argument('--env_name', type=str, default="VideoPinball-ramNoFrameskip
 parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--is_dueling', action='store_true')
 parser.add_argument('--is_double', action='store_true')
+parser.add_argument('--is_per', action='store_true')
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -24,7 +25,7 @@ EPS_START = 1.
 EPS_END = 0.1
 EPS_DECAY = 1000000
 TARGET_UPDATE = 10000
-NUM_STEPS = 15000000
+NUM_STEPS = 10000000
 M_SIZE = 200000
 POLICY_UPDATE = 4
 EVALUATE_FREQ = 50000
@@ -59,7 +60,7 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.Adam(policy_net.parameters(), lr=LR, eps=1.5e-4)
-memory = ReplayMemory(M_SIZE, [5,h,w], device)
+memory = PrioritizedReplay(M_SIZE, [5,h,w], device) if args.per else ReplayMemory(M_SIZE, [5,h,w], device)
 sa = ActionSelector(EPS_START, EPS_END, EPS_DECAY, policy_net, action_dim, device)
 
 best_reward = 0.
@@ -67,7 +68,12 @@ best_reward = 0.
 def optimize_model(train):
     if not train:
         return
-    state_batch, action_batch, reward_batch, n_state_batch, done_batch = memory.sample(BATCH_SIZE)
+    if args.per:
+        state_batch, action_batch, reward_batch, n_state_batch, done_batch, indices, weights = memory.sample(BATCH_SIZE)
+    else:
+        state_batch, action_batch, reward_batch, n_state_batch, done_batch = memory.sample(BATCH_SIZE)
+        weights = 1.
+
     q = policy_net(state_batch).gather(1, action_batch)
     if args.is_double:
         greedy_act = policy_net(n_state_batch).max(dim=1, keepdim=True)[1]
@@ -79,7 +85,8 @@ def optimize_model(train):
     target_q_value = (nq * GAMMA)*(1. - done_batch[:,0]) + reward_batch[:,0]
 
     # Compute loss
-    loss = F.smooth_l1_loss(q, target_q_value.unsqueeze(1))
+    td_error = target_q_value - q
+    loss = torch.mean(F.smooth_l1_loss(q, target_q_value.unsqueeze(1), reduction='none') * weights)
 
     # optimize the model
     optimizer.zero_grad()
@@ -87,6 +94,9 @@ def optimize_model(train):
     for param in policy_net.parameters():
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
+
+    if args.per:
+        memory.update_priority(indices, td_error)
 
 def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
     global best_reward

@@ -51,8 +51,8 @@ class PrioritizedReplay:
         next_state = np.expand_dims(next_state, 0)
         action = np.expand_dims(action, 0)
 
-        self.memory.insert(0, (state, action, reward, next_state, done))
-        self.priorities.insert(0, error+self.epsilon)
+        self.memory.append((state, action, reward, next_state, done))
+        self.priorities.append(abs(error)+self.epsilon)
 
     def sample(self, batch_size):
         N = len(self.memory)
@@ -85,7 +85,7 @@ class PrioritizedReplay:
 
     def update_priority(self, batch_indices, batch_priorities):
         for idx, prio in zip(batch_indices, batch_priorities):
-            self.priorities[idx] = abs(prio)
+            self.priorities[idx] = abs(prio)+self.epsilon
 
     def __len__(self):
         return len(self.memory)
