@@ -292,8 +292,8 @@ class SACAgent:
 
     def calc_policy_loss(self, batch, weights):
         states, actions, rewards, next_states, dones = batch
-        sampled_batch, entropy, _ = self.policy.sample(states)
-        q1, q2 = self.critic(states, sampled_batch)
+        sampled_action, entropy, _ = self.policy.sample(states)
+        q1, q2 = self.critic(states, sampled_action)
         q = torch.min(q1, q2)
         policy_loss = torch.mean((-q-self.alpha*entropy)*weights)
         return policy_loss, entropy
@@ -330,7 +330,7 @@ class SACAgent:
                 error_q1 = torch.abs(curr_q1.detach() - target_q)
                 error_q2 = torch.abs(curr_q2.detach() - target_q)
                 error = (error_q1 + error_q2) / 2
-                self.memory.append(state, action, reward, next_state, masked_done, error)
+                self.memory.append(state, action, reward, next_state, masked_done, error.squeeze().detach().cpu().numpy())
             else:
                 self.memory.append(state, action, reward, next_state, masked_done)
 
@@ -360,10 +360,10 @@ class SACAgent:
             weights = 1.
 
         q1_loss, q2_loss, errors, mean_q1, mean_q2 = self.calc_critic_loss(batch, weights)
-        policy_loss, entropies = self.calc_policy_loss(batch, weights)
-
         update_params(self.q1_optimizer, self.critic.Q1, q1_loss)
         update_params(self.q2_optimizer, self.critic.Q2, q2_loss)
+
+        policy_loss, entropies = self.calc_policy_loss(batch, weights)
         update_params(self.policy_optimizer, self.policy, policy_loss)
 
         if self.entropy_tuning:
@@ -372,7 +372,7 @@ class SACAgent:
             self.alpha = self.log_alpha.exp()
 
         if self.per:
-            self.memory.update_priority(indices, errors.cpu().numpy())
+            self.memory.update_priority(indices, errors.squeeze().detach().cpu().numpy())
 
     def evaluate(self):
         episodes = 10

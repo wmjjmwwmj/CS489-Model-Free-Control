@@ -20,15 +20,15 @@ class ReplayBuffer:
         self.memory.append((state, action, reward, next_state, done))
 
     def sample(self, batch_size):
-        indices = random.sample(self.memory, k=batch_size)
+        indices = np.random.choice(len(self.memory), size=batch_size)
         samples = [self.memory[idx] for idx in indices]
         states, actions, rewards, next_states, dones = zip(*samples)
 
-        states = torch.tensor(np.concatenate(states)).to(self.device)
-        next_states = torch.tensor(np.concatenate(next_states)).to(self.device)
-        actions = torch.tensor(np.concatenate(actions)).to(self.device)
-        rewards = torch.tensor(rewards).to(self.device)
-        dones = torch.tensor(dones).to(self.device)
+        states = torch.tensor(np.concatenate(states), dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(np.concatenate(next_states), dtype=torch.float32).to(self.device)
+        actions = torch.tensor(np.concatenate(actions), dtype=torch.float32).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         return states, actions, rewards, next_states, dones
 
@@ -36,11 +36,11 @@ class ReplayBuffer:
         samples = [self.memory[idx] for idx in range(len(self.memory))]
         states, actions, rewards, next_states, dones = zip(*samples)
 
-        states = torch.tensor(np.concatenate(states)).to(self.device)
-        next_states = torch.tensor(np.concatenate(next_states)).to(self.device)
-        actions = torch.tensor(np.concatenate(actions)).to(self.device)
-        rewards = torch.tensor(rewards).to(self.device)
-        dones = torch.tensor(dones).to(self.device)
+        states = torch.tensor(np.concatenate(states), dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(np.concatenate(next_states), dtype=torch.float32).to(self.device)
+        actions = torch.tensor(np.concatenate(actions), dtype=torch.float32).to(self.device)
+        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
+        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
 
         return states, actions, rewards, next_states, dones
 
@@ -68,7 +68,6 @@ class PrioritizedReplay:
 
     def sample(self, batch_size):
         N = len(self.memory)
-
         prios = np.array(list(self.priorities)[:N])
         probs = prios ** self.alpha
         P = probs/probs.sum()
@@ -85,12 +84,12 @@ class PrioritizedReplay:
 
         states, actions, rewards, next_states, dones = zip(*samples)
 
-        states = torch.tensor(np.concatenate(states)).to(self.device)
-        next_states = torch.tensor(np.concatenate(next_states)).to(self.device)
-        actions = torch.tensor(np.concatenate(actions)).to(self.device)
-        rewards = torch.tensor(rewards).to(self.device)
-        dones = torch.tensor(dones).to(self.device)
-        weights = torch.tensor(weights).to(self.device)
+        states = torch.tensor(np.concatenate(states),dtype=torch.float32).to(self.device)
+        next_states = torch.tensor(np.concatenate(next_states),dtype=torch.float32).to(self.device)
+        actions = torch.tensor(np.concatenate(actions),dtype=torch.float32).to(self.device)
+        rewards = torch.tensor(rewards,dtype=torch.float32).unsqueeze(1).to(self.device)
+        dones = torch.tensor(dones,dtype=torch.float32).unsqueeze(1).to(self.device)
+        weights = torch.tensor(weights,dtype=torch.float32).to(self.device)
         batch = states, actions, rewards, next_states, dones
 
         return batch, indices, weights

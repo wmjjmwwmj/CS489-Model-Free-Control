@@ -8,8 +8,8 @@ from agent import *
 parser = argparse.ArgumentParser(description="parameter setting for mujoco")
 parser.add_argument('--env_name', type=str, default="Hopper-v2")
 parser.add_argument('--seed', type=int, default=None)
-parser.add_argument('--method', choices=['ppo', 'sac'], default='ppo')
-parser.add_argument('--is_per', type=bool, default=False)
+parser.add_argument('--method', choices=['ppo', 'sac'], default='sac')
+parser.add_argument('--is_per', type=bool, default=True)
 parser.add_argument('--entropy_tuning', type=bool, default=True)
 args = parser.parse_args()
 

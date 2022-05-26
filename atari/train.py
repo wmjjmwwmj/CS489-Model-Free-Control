@@ -9,10 +9,10 @@ from models import *
 from atari_wrappers import wrap_deepmind, make_atari
 
 parser = argparse.ArgumentParser(description="parameter setting for atari")
-parser.add_argument('--env_name', type=str, default="VideoPinball-ramNoFrameskip-v4")
+parser.add_argument('--env_name', type=str, default="BreakoutNoFrameskip-v4")
 parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--is_dueling', type=bool, default=True)
-parser.add_argument('--is_double', type=bool, default=True)
+parser.add_argument('--is_double', type=bool, default=False)
 parser.add_argument('--is_per', type=bool, default=True)
 args = parser.parse_args()
 
@@ -76,17 +76,17 @@ def optimize_model(train):
 
     q = policy_net(state_batch).gather(1, action_batch)
     if args.is_double:
-        greedy_act = policy_net(n_state_batch).max(dim=1, keepdim=True)[1]
-        nq = target_net(n_state_batch).gather(1, greedy_act).squeeze()
+        greedy_act = policy_net(n_state_batch).max(dim=1)[1].unsqueeze(1)
+        nq = target_net(n_state_batch).gather(1, greedy_act).squeeze().detach()
     else:
-        nq = target_net(n_state_batch).max(dim=1)[0]
+        nq = target_net(n_state_batch).max(dim=1)[0].detach()
 
     # compute the expected Q values
-    target_q_value = (nq * GAMMA)*(1. - done_batch[:,0]) + reward_batch[:,0]
+    target_q_value = (nq * GAMMA * (1. - done_batch[:,0]) + reward_batch[:,0]).unsqueeze(1)
 
     # Compute loss
     td_error = target_q_value - q
-    loss = torch.mean(F.smooth_l1_loss(q, target_q_value.unsqueeze(1), reduction='none') * weights)
+    loss = torch.mean(F.smooth_l1_loss(q, target_q_value, reduction='none') * weights)
 
     # optimize the model
     optimizer.zero_grad()
@@ -96,7 +96,7 @@ def optimize_model(train):
     optimizer.step()
 
     if args.is_per:
-        memory.update_priority(indices, td_error)
+        memory.update_priority(indices, td_error.detach().cpu())
 
 def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
     global best_reward

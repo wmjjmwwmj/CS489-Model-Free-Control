@@ -137,7 +137,7 @@ class PrioritizedReplay:
         self.m_rewards[self.position, 0] = reward
         self.m_dones[self.position, 0] = done
 
-        max_prio = self.m_priority.max()[0] if self.size else 1.0
+        max_prio = self.m_priority.max() if self.size else 1.0
         self.m_priority[self.position] = max_prio
 
         self.position = (self.position + 1) % self.capacity
@@ -159,13 +159,13 @@ class PrioritizedReplay:
         # compute importance sampling weight
         weights = (self.size * P[indices]) ** (-self.beta)
         weights /= weights.max()
-        weights = np.array(weights, dtype=np.float32)
+        weights = torch.tensor(np.array(weights, dtype=np.float32),dtype=torch.float32).to(self.device)
 
         return bs, ba, br, bns, bd, indices, weights
 
     def update_priority(self, batch_indices, batch_priorities):
         for idx, prio in zip(batch_indices, batch_priorities):
-            self.m_priority[idx] = abs(prio)+self.epsilon
+            self.m_priority[idx] = torch.abs(prio)+self.epsilon
 
     def __len__(self):
         return self.size
