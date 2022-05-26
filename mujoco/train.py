@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser(description="parameter setting for mujoco")
 parser.add_argument('--env_name', type=str, default="Hopper-v2")
 parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--method', choices=['ppo', 'sac'], default='sac')
-parser.add_argument('--is_per', type=bool, default=True)
+parser.add_argument('--is_per', type=bool, default=False)
 parser.add_argument('--entropy_tuning', type=bool, default=True)
 args = parser.parse_args()
 
@@ -28,8 +28,8 @@ if args.seed:
     fix_seed(args.seed)
 
 env = gym.make(args.env_name)
-log_dir = os.path.join('local', args.env_name,
+local_dir = os.path.join('local', args.env_name,
    f'{args.method}-seed{args.seed}-per{args.is_per}-tune{args.entropy_tuning}-{datetime.now().strftime("%Y%m%d-%H%M")}')
 
-agent = SACAgent(env, args.entropy_tuning, args.is_per, log_dir) if args.method == 'sac' else PPOAgent(env, log_dir)
+agent = SACAgent(env, args.entropy_tuning, args.is_per, local_dir) if args.method == 'sac' else PPOAgent(env, local_dir)
 agent.run()

@@ -2,6 +2,7 @@ import numpy as np
 import os
 import argparse
 from collections import deque
+from datetime import datetime
 
 import torch.optim as optim
 
@@ -13,10 +14,14 @@ parser.add_argument('--env_name', type=str, default="BreakoutNoFrameskip-v4")
 parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--is_dueling', type=bool, default=True)
 parser.add_argument('--is_double', type=bool, default=False)
-parser.add_argument('--is_per', type=bool, default=True)
+parser.add_argument('--is_per', type=bool, default=False)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+local_dir = os.path.join('local', args.env_name,
+   f'seed{args.seed}-duel{args.is_dueling}-double{args.double}-per{args.is_per}-{datetime.now().strftime("%Y%m%d-%H%M")}')
+model_dir = os.path.join(local_dir, "model")
+os.makedirs(model_dir, exist_ok=True)
 
 # model hyper-parameters
 BATCH_SIZE = 32
@@ -100,7 +105,6 @@ def optimize_model(train):
 
 def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
     global best_reward
-    os.makedirs("models", exist_ok=True)
     env = wrap_deepmind(env)
     sa = ActionSelector(0., 0., EPS_DECAY, policy_net, action_dim, device) # use greedy alg during testing
     e_rewards = []
@@ -130,12 +134,7 @@ def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
     print(f"The average reward is {avg_reward:.5f}")
     if avg_reward > best_reward:
         print("New best reward, save model to disk.")
-        checkpoint_name = f"DQN_{args.env_name}_best.pth"
-        if args.is_dueling:
-            checkpoint_name = "Dueling" + checkpoint_name
-        if args.is_double:
-            checkpoint_name = "Double" + checkpoint_name
-        torch.save(policy_net.state_dict(), "models/"+checkpoint_name)
+        torch.save(policy_net.state_dict(), os.path.join(model_dir, "policy.pth"))
         best_reward = avg_reward
     f.write("%f, %f, %f, %d, %d\n" % (avg_reward, min_reward, max_reward, step, n_episode))
     f.close()
@@ -144,13 +143,22 @@ frame_q = deque(maxlen=5)
 reward_q = deque(maxlen=2)
 done = True
 eps = 0
+episodes = 0
 episode_len = 0
+episode_reward = 0
+training_rewards = deque(maxlen=10)
 
 for step in range(NUM_STEPS):
     if done:
+        episodes += 1
+        training_rewards.append(episode_reward)
+        print(f'episode: {episodes:<4}  '
+              f'episode steps: {episode_len:<4}  '
+              f'reward: {np.mean(training_rewards):<5.1f}')
+
         env.reset()
-        sum_reward = 0
         episode_len = 0
+        episode_reward = 0
         img, _, _, _ = env.step(1) # for BREAKOUT
         for i in range(5): # noop
             n_frame, reward, _, _ = env.step(0)
@@ -170,6 +178,7 @@ for step in range(NUM_STEPS):
     reward_q.append(reward)
     memory.push(torch.cat(list(frame_q)).unsqueeze(0), action, reward_q[0], done)
     episode_len += 1
+    episode_reward += reward
 
     # perform one step of optimization
     if step % POLICY_UPDATE == 0:

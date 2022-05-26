@@ -8,10 +8,10 @@ from models import *
 from utils import *
 
 class PPOAgent:
-    def __init__(self, env, log_dir=None):
+    def __init__(self, env, local_dir=None):
         self.env = env
-        self.log_dir = log_dir
-        self.model_dir = os.path.join(log_dir, "model")
+        self.local_dir = local_dir
+        self.model_dir = os.path.join(local_dir, "model")
         os.makedirs(self.model_dir, exist_ok=True)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -171,12 +171,12 @@ class PPOAgent:
         self.env.close()
 
 class SACAgent:
-    def __init__(self, env, entropy_tuning=True, per=False, log_dir=None):
+    def __init__(self, env, entropy_tuning=True, per=False, local_dir=None):
         self.env = env
         self.entropy_tuning = entropy_tuning
         self.per = per
-        self.log_dir = log_dir
-        self.model_dir = os.path.join(log_dir, "model")
+        self.local_dir = local_dir
+        self.model_dir = os.path.join(local_dir, "model")
         os.makedirs(self.model_dir, exist_ok=True)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

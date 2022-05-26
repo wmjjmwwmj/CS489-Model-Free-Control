@@ -30,13 +30,8 @@ def demo(n_episode=1):
     else:
         policy_net = QNet(h, w, action_dim, device).to(device)
 
-    checkpoint_name = f"DQN_{args.env_name}_best.pth"
-    if args.is_dueling:
-        checkpoint_name = "Dueling" + checkpoint_name
-    if args.is_double:
-        checkpoint_name = "Double" + checkpoint_name
-    best_checkpoint = torch.load("models/" + checkpoint_name)
-    policy_net.load_state_dict(best_checkpoint)
+    policy_state_dict = torch.load(os.path.join('models', args.env_name, 'policy.pth'))
+    policy_net.load_state_dict(policy_state_dict)
 
     policy_net.eval()
     sa = ActionSelector(0., 0., 10000, policy_net, action_dim, device)
