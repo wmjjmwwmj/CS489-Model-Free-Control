@@ -114,7 +114,7 @@ class PPOAgent:
             for t in range(self.traj_len):
                 mu, sigma = self.policy(torch.FloatTensor(state).unsqueeze(0).to(self.device))
                 dist = torch.distributions.Normal(mu, sigma[0])
-                action = dist.sample().cpu().numpy()
+                action = dist.sample().cpu().numpy().reshape(-1)
                 next_state, reward, done, _ = self.env.step(action)
                 self.steps += 1
                 episode_steps += 1
@@ -151,7 +151,7 @@ class PPOAgent:
             done = False
             while not done:
                 mu, sigma = self.policy(torch.FloatTensor(state).unsqueeze(0).to(self.device))
-                action = mu.detach().cpu().numpy()
+                action = mu.detach().cpu().numpy().reshape(-1)
                 next_state, reward, done, _ = self.env.step(action)
                 episode_reward += reward
                 state = next_state
@@ -164,8 +164,8 @@ class PPOAgent:
         print('-' * 60)
 
     def save_models(self):
-        self.policy.save(os.path.join(self.model_dir, 'policy.pth'))
-        self.critic.save(os.path.join(self.model_dir, 'critic.pth'))
+        torch.save(self.policy.state_dict(), os.path.join(self.model_dir, 'policy.pth'))
+        torch.save(self.critic.state_dict(), os.path.join(self.model_dir, 'critic.pth'))
 
     def __del__(self):
         self.env.close()
@@ -186,7 +186,7 @@ class SACAgent:
         self.batch_size = 256
         self.lr = 0.0003
         self.hidden_size = 256
-        self.memory_size = 1e6
+        self.memory_size = 1000000
         self.gamma = 0.99
         self.tau = 0.005
         self.ent_coef = 0.2
@@ -396,9 +396,9 @@ class SACAgent:
         print('-' * 60)
 
     def save_models(self):
-        self.policy.save(os.path.join(self.model_dir, 'policy.pth'))
-        self.critic.save(os.path.join(self.model_dir, 'critic.pth'))
-        self.critic_target.save(os.path.join(self.model_dir, 'critic_target.pth'))
+        torch.save(self.policy.state_dict(), os.path.join(self.model_dir, 'policy.pth'))
+        torch.save(self.critic.state_dict(), os.path.join(self.model_dir, 'critic.pth'))
+        torch.save(self.critic_target.state_dict(), os.path.join(self.model_dir, 'critic_target.pth'))
 
     def __del__(self):
         self.env.close()

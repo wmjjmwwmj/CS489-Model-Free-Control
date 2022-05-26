@@ -2,8 +2,8 @@ import os
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--env_name', type=str, default='PongNoFrameskip-v4')
-parser.add_argument('--seed', type=int, default=None)
+parser.add_argument('--env_name', type=str, default='BreakoutNoFrameskip-v4')
+parser.add_argument('--seed', type=int, default=42)
 args = parser.parse_args()
 
 assert args.env_name in ["VideoPinball-ramNoFrameskip-v4", "BreakoutNoFrameskip-v4", "PongNoFrameskip-v4",
@@ -13,7 +13,7 @@ assert args.env_name in ["VideoPinball-ramNoFrameskip-v4", "BreakoutNoFrameskip-
 if args.env_name in ["VideoPinball-ramNoFrameskip-v4", "BreakoutNoFrameskip-v4", "PongNoFrameskip-v4",
                      "BoxingNoFrameskip-v4"]:
     os.chdir("atari")
-    os.system("python train.py --env_name " + args.env_name + " --seed " + args.seed)
+    os.system("python train.py --env_name " + args.env_name + " --seed " + str(args.seed))
 else:
     os.chdir("mujoco")
-    os.system("python train.py --env_name " + args.env_name + " --seed " + args.seed)
+    os.system("python train.py --env_name " + args.env_name + " --seed " + str(args.seed))

@@ -11,9 +11,9 @@ from atari_wrappers import wrap_deepmind, make_atari
 parser = argparse.ArgumentParser(description="parameter setting for atari")
 parser.add_argument('--env_name', type=str, default="VideoPinball-ramNoFrameskip-v4")
 parser.add_argument('--seed', type=int, default=None)
-parser.add_argument('--is_dueling', action='store_true')
-parser.add_argument('--is_double', action='store_true')
-parser.add_argument('--is_per', action='store_true')
+parser.add_argument('--is_dueling', type=bool, default=True)
+parser.add_argument('--is_double', type=bool, default=True)
+parser.add_argument('--is_per', type=bool, default=True)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -60,7 +60,7 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.Adam(policy_net.parameters(), lr=LR, eps=1.5e-4)
-memory = PrioritizedReplay(M_SIZE, [5,h,w], device) if args.per else ReplayMemory(M_SIZE, [5,h,w], device)
+memory = PrioritizedReplay(M_SIZE, [5,h,w], device) if args.is_per else ReplayMemory(M_SIZE, [5,h,w], device)
 sa = ActionSelector(EPS_START, EPS_END, EPS_DECAY, policy_net, action_dim, device)
 
 best_reward = 0.
@@ -68,7 +68,7 @@ best_reward = 0.
 def optimize_model(train):
     if not train:
         return
-    if args.per:
+    if args.is_per:
         state_batch, action_batch, reward_batch, n_state_batch, done_batch, indices, weights = memory.sample(BATCH_SIZE)
     else:
         state_batch, action_batch, reward_batch, n_state_batch, done_batch = memory.sample(BATCH_SIZE)
@@ -95,7 +95,7 @@ def optimize_model(train):
         param.grad.data.clamp_(-1, 1)
     optimizer.step()
 
-    if args.per:
+    if args.is_per:
         memory.update_priority(indices, td_error)
 
 def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
@@ -129,7 +129,7 @@ def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
     max_reward = max(e_rewards)
     print(f"The average reward is {avg_reward:.5f}")
     if avg_reward > best_reward:
-        print("New best reward, save model to disk!!!")
+        print("New best reward, save model to disk.")
         checkpoint_name = f"DQN_{args.env_name}_best.pth"
         if args.is_dueling:
             checkpoint_name = "Dueling" + checkpoint_name
@@ -179,7 +179,7 @@ for step in range(NUM_STEPS):
         target_net.load_state_dict(policy_net.state_dict())
     # evaluate current model performance
     if step % EVALUATE_FREQ == 0:
-        evaluate(step, policy_net, device, env_raw, action_dim, n_episode=20)
+        evaluate(step, policy_net, device, env_raw, action_dim, n_episode=10)
 
 
 
