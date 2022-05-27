@@ -33,7 +33,7 @@ TARGET_UPDATE = 10000
 NUM_STEPS = 10000000
 M_SIZE = 200000
 POLICY_UPDATE = 4
-EVALUATE_FREQ = 50000
+EVALUATE_FREQ = 25000
 LR = 0.0000625
 
 def fix_seed(seed):
@@ -72,7 +72,7 @@ best_reward = 0.
 
 def optimize_model(train):
     if not train:
-        return
+        return None, None, None
     if args.is_per:
         state_batch, action_batch, reward_batch, n_state_batch, done_batch, indices, weights = memory.sample(BATCH_SIZE)
     else:
@@ -103,7 +103,9 @@ def optimize_model(train):
     if args.is_per:
         memory.update_priority(indices, td_error.detach().cpu())
 
-def evaluate(step, policy_net, device, env, action_dim, eps=0.01, n_episode=5):
+    return loss, torch.mean(q), torch.mean(target_q_value)
+
+def evaluate(step, policy_net, device, env, action_dim, loss, q, target_q, eps=0.01, n_episode=5):
     global best_reward
     env = wrap_deepmind(env)
     sa = ActionSelector(eps, eps, EPS_DECAY, policy_net, action_dim, device)
@@ -127,7 +129,7 @@ def evaluate(step, policy_net, device, env, action_dim, eps=0.01, n_episode=5):
             e_reward += reward
         e_rewards.append(e_reward)
 
-    f = open(args.env_name+".csv", 'a')
+    f = open(os.path.join(local_dir, "testing_rewards.csv"), 'a')
     avg_reward = float(sum(e_rewards))/float(n_episode)
     min_reward = min(e_rewards)
     max_reward = max(e_rewards)
@@ -136,7 +138,7 @@ def evaluate(step, policy_net, device, env, action_dim, eps=0.01, n_episode=5):
         print("New best reward, save model to disk.")
         torch.save(policy_net.state_dict(), os.path.join(model_dir, "policy.pth"))
         best_reward = avg_reward
-    f.write("%f, %f, %f, %d, %d\n" % (avg_reward, min_reward, max_reward, step, n_episode))
+    f.write("%f, %f, %f, %f, %f, %f, %d, %d\n" % (avg_reward, min_reward, max_reward, loss, q, target_q, step, n_episode))
     f.close()
 
 frame_q = deque(maxlen=5)
@@ -152,9 +154,9 @@ for step in range(NUM_STEPS):
     if done:
         episodes += 1
         training_rewards.append(episode_reward)
-        print(f'episode: {episodes:<4}  '
-              f'episode steps: {episode_len:<4}  '
-              f'reward: {np.mean(training_rewards):<5.1f}')
+        # print(f'episode: {episodes:<4}  '
+        #       f'episode steps: {episode_len:<4}  '
+        #       f'reward: {np.mean(training_rewards):<5.1f}')
 
         env.reset()
         episode_len = 0
@@ -182,13 +184,13 @@ for step in range(NUM_STEPS):
 
     # perform one step of optimization
     if (step+1) % POLICY_UPDATE == 0:
-        optimize_model(train)
+        loss, q, target_q = optimize_model(train)
     # update target network
     if (step+1) % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
     # evaluate current model performance
     if (step+1) % EVALUATE_FREQ == 0:
-        evaluate(step, policy_net, device, env_raw, action_dim, eps=0.05, n_episode=10)
+        evaluate(step, policy_net, device, env_raw, action_dim, loss, q, target_q, eps=0.05, n_episode=10)
 
 
 

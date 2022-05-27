@@ -170,7 +170,10 @@ class PPOAgent:
                 state = next_state
             returns[i] = episode_reward
 
-        mean_return = np.mean(returns)
+        mean_return = float(sum(returns))/float(episodes)
+        min_return = min(returns)
+        max_return = max(returns)
+        f = open(os.path.join(self.local_dir, "testing_rewards.csv"), 'a')
         print('-' * 60)
         print(f'Num steps: {self.steps:<5}  '
               f'reward: {mean_return:<5.1f}')
@@ -179,6 +182,8 @@ class PPOAgent:
             print("New best reward, save model to disk.")
             self.save_models()
             self.best_reward = mean_return
+        f.write("%f, %f, %f, %d, %d\n" % (mean_return, min_return, max_return, self.steps, self.episodes))
+        f.close()
 
     def save_models(self):
         torch.save(self.policy.state_dict(), os.path.join(self.model_dir, 'policy.pth'))
@@ -212,7 +217,7 @@ class SACAgent:
         self.beta_annealing = 0.0001
         self.start_steps = 10000
         self.log_interval = 10
-        self.eval_interval = 10000
+        self.eval_interval = 5000
         self.multi_step = 1
 
         # networks
@@ -412,7 +417,10 @@ class SACAgent:
                 state = next_state
             returns[i] = episode_reward
 
-        mean_return = np.mean(returns)
+        mean_return = float(sum(returns)) / float(episodes)
+        min_return = min(returns)
+        max_return = max(returns)
+        f = open(os.path.join(self.local_dir, "testing_rewards.csv"), 'a')
         print('-' * 60)
         print(f'Num steps: {self.steps:<5}  '
               f'reward: {mean_return:<5.1f}')
@@ -421,6 +429,8 @@ class SACAgent:
             print("New best reward, save model to disk.")
             self.save_models()
             self.best_reward = mean_return
+        f.write("%f, %f, %f, %d, %d\n" % (mean_return, min_return, max_return, self.steps, self.episodes))
+        f.close()
 
     def save_models(self):
         torch.save(self.policy.state_dict(), os.path.join(self.model_dir, 'policy.pth'))
