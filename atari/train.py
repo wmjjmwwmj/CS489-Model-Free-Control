@@ -12,7 +12,7 @@ from atari_wrappers import wrap_deepmind, make_atari
 parser = argparse.ArgumentParser(description="parameter setting for atari")
 parser.add_argument('--env_name', type=str, default="BreakoutNoFrameskip-v4")
 parser.add_argument('--seed', type=int, default=None)
-parser.add_argument('--is_dueling', type=bool, default=True)
+parser.add_argument('--is_dueling', type=bool, default=False)
 parser.add_argument('--is_double', type=bool, default=False)
 parser.add_argument('--is_per', type=bool, default=False)
 args = parser.parse_args()
@@ -103,10 +103,10 @@ def optimize_model(train):
     if args.is_per:
         memory.update_priority(indices, td_error.detach().cpu())
 
-def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
+def evaluate(step, policy_net, device, env, action_dim, eps=0.01, n_episode=5):
     global best_reward
     env = wrap_deepmind(env)
-    sa = ActionSelector(0., 0., EPS_DECAY, policy_net, action_dim, device) # use greedy alg during testing
+    sa = ActionSelector(eps, eps, EPS_DECAY, policy_net, action_dim, device)
     e_rewards = []
     frame_q = deque(maxlen=5)
     for _ in range(n_episode):
@@ -119,7 +119,7 @@ def evaluate(step, policy_net, device, env, action_dim, n_episode=5):
 
         while not done:
             state = torch.cat(list(frame_q))[1:].unsqueeze(0)
-            action, eps = sa.select_action(state)
+            action, eps = sa.select_action(state, train)
             n_frame, reward, done, _ = env.step(action)
             n_frame = fp(n_frame)
             frame_q.append(n_frame)
@@ -152,9 +152,9 @@ for step in range(NUM_STEPS):
     if done:
         episodes += 1
         training_rewards.append(episode_reward)
-        # print(f'episode: {episodes:<4}  '
-        #       f'episode steps: {episode_len:<4}  '
-        #       f'reward: {np.mean(training_rewards):<5.1f}')
+        print(f'episode: {episodes:<4}  '
+              f'episode steps: {episode_len:<4}  '
+              f'reward: {np.mean(training_rewards):<5.1f}')
 
         env.reset()
         episode_len = 0
@@ -181,14 +181,14 @@ for step in range(NUM_STEPS):
     episode_reward += reward
 
     # perform one step of optimization
-    if step % POLICY_UPDATE == 0:
+    if (step+1) % POLICY_UPDATE == 0:
         optimize_model(train)
     # update target network
-    if step % TARGET_UPDATE == 0:
+    if (step+1) % TARGET_UPDATE == 0:
         target_net.load_state_dict(policy_net.state_dict())
     # evaluate current model performance
-    if step % EVALUATE_FREQ == 0:
-        evaluate(step, policy_net, device, env_raw, action_dim, n_episode=10)
+    if (step+1) % EVALUATE_FREQ == 0:
+        evaluate(step, policy_net, device, env_raw, action_dim, eps=0.05, n_episode=10)
 
 
 

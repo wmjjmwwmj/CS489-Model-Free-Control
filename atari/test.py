@@ -12,9 +12,8 @@ from atari_wrappers import wrap_deepmind, make_atari
 
 parser = argparse.ArgumentParser(description="parameter setting for atari")
 parser.add_argument('--env_name', type=str, default="BreakoutNoFrameskip-v4")
-parser.add_argument('--is_dueling', action='store_true')
-parser.add_argument('--is_double', action='store_true')
-parser.add_argument('--n_episode', type=int, default=10)
+parser.add_argument('--is_dueling', type=bool, default=True)
+parser.add_argument('--num_episode', type=int, default=10)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -64,7 +63,7 @@ def demo(n_episode=1):
     print(f"Average reward of {args.env_name} is {avg_reward:.1f}")
     print(f"Std of {args.env_name} is {std:.1f}")
 
-demo(args.n_episode)
+demo(args.num_episode)
 
 
 

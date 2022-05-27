@@ -368,9 +368,9 @@ class SACAgent:
 
         self.train_rewards.append(episode_reward)
 
-        print(f'episode: {self.episodes:<4}  '
-              f'episode steps: {episode_steps:<4}  '
-              f'reward: {episode_reward:<5.1f}')
+        # print(f'episode: {self.episodes:<4}  '
+        #       f'episode steps: {episode_steps:<4}  '
+        #       f'reward: {episode_reward:<5.1f}')
 
     def learn(self):
         self.learning_steps += 1

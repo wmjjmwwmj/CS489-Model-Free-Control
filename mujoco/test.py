@@ -16,8 +16,8 @@ warnings.filterwarnings('ignore')
 
 parser = argparse.ArgumentParser(description="parameter setting for mujoco")
 parser.add_argument('--env_name', type=str, default="Hopper-v2")
-parser.add_argument('--method', choices=['ppo', 'sac'])
-parser.add_argument('--n_episode', type=int, default=10)
+parser.add_argument('--method', choices=['ppo', 'sac'], default='ppo')
+parser.add_argument('--num_episode', type=int, default=10)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -55,5 +55,5 @@ def demo(n_episode=1):
     print("Average reward of " + args.env_name + " is %.1f" % (np.mean(e_rewards)))
     print("Average std of " + args.env_name + " is %.1f" % (np.std(e_rewards)))
 
-demo(args.n_episode)
+demo(args.num_episode)
 
