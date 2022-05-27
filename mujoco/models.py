@@ -7,99 +7,52 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.distributions import Normal
 
+
 class ReplayBuffer:
-    def __init__(self, capacity, device):
-        self.memory = deque(maxlen=capacity)
-        self.device = device
+    def __init__(self, action_prob_exist, max_size, state_dim, num_action):
+        self.max_size = max_size
+        self.data_idx = 0
+        self.action_prob_exist = action_prob_exist
+        self.data = {}
 
-    def append(self, state, action, reward, next_state, done):
-        state = np.expand_dims(state, 0)
-        next_state = np.expand_dims(next_state, 0)
-        action = np.expand_dims(action, 0)
+        self.data['state'] = np.zeros((self.max_size, state_dim))
+        self.data['action'] = np.zeros((self.max_size, num_action))
+        self.data['reward'] = np.zeros((self.max_size, 1))
+        self.data['next_state'] = np.zeros((self.max_size, state_dim))
+        self.data['done'] = np.zeros((self.max_size, 1))
+        if self.action_prob_exist:
+            self.data['log_prob'] = np.zeros((self.max_size, 1))
 
-        self.memory.append((state, action, reward, next_state, done))
+    def append(self, transition):
+        idx = self.data_idx % self.max_size
+        self.data['state'][idx] = transition['state']
+        self.data['action'][idx] = transition['action']
+        self.data['reward'][idx] = transition['reward']
+        self.data['next_state'][idx] = transition['next_state']
+        self.data['done'][idx] = float(transition['done'])
+        if self.action_prob_exist:
+            self.data['log_prob'][idx] = transition['log_prob']
 
-    def sample(self, batch_size):
-        indices = np.random.choice(len(self.memory), size=batch_size)
-        samples = [self.memory[idx] for idx in indices]
-        states, actions, rewards, next_states, dones = zip(*samples)
+        self.data_idx += 1
 
-        states = torch.tensor(np.concatenate(states), dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(np.concatenate(next_states), dtype=torch.float32).to(self.device)
-        actions = torch.tensor(np.concatenate(actions), dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
+    def sample(self, shuffle, batch_size=None):
+        if shuffle:
+            sample_num = min(self.max_size, self.data_idx)
+            rand_idx = np.random.choice(sample_num, batch_size, replace=False)
+            sampled_data = {}
+            sampled_data['state'] = self.data['state'][rand_idx]
+            sampled_data['action'] = self.data['action'][rand_idx]
+            sampled_data['reward'] = self.data['reward'][rand_idx]
+            sampled_data['next_state'] = self.data['next_state'][rand_idx]
+            sampled_data['done'] = self.data['done'][rand_idx]
+            if self.action_prob_exist:
+                sampled_data['log_prob'] = self.data['log_prob'][rand_idx]
+            return sampled_data
+        else:
+            return self.data
 
-        return states, actions, rewards, next_states, dones
-
-    def get_all(self):
-        samples = [self.memory[idx] for idx in range(len(self.memory))]
-        states, actions, rewards, next_states, dones = zip(*samples)
-
-        states = torch.tensor(np.concatenate(states), dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(np.concatenate(next_states), dtype=torch.float32).to(self.device)
-        actions = torch.tensor(np.concatenate(actions), dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(rewards, dtype=torch.float32).to(self.device)
-        dones = torch.tensor(dones, dtype=torch.float32).to(self.device)
-
-        return states, actions, rewards, next_states, dones
-
-    def __len__(self):
-        return len(self.memory)
-
-class PrioritizedReplay:
-    def __init__(self, capacity, device, alpha=0.6, beta_start=0.4, beta_annealing=0.0001, epsilon=1e-4):
-        self.alpha = alpha
-        self.device = device
-        self.beta = beta_start
-        self.epsilon = epsilon
-        self.beta_annealing = beta_annealing
-        self.capacity = capacity
-        self.memory = deque(maxlen=capacity)
-        self.priorities = deque(maxlen=capacity)
-
-    def append(self, state, action, reward, next_state, done, error):
-        state = np.expand_dims(state, 0)
-        next_state = np.expand_dims(next_state, 0)
-        action = np.expand_dims(action, 0)
-
-        self.memory.append((state, action, reward, next_state, done))
-        self.priorities.append(abs(error)+self.epsilon)
-
-    def sample(self, batch_size):
-        N = len(self.memory)
-        prios = np.array(list(self.priorities)[:N])
-        probs = prios ** self.alpha
-        P = probs/probs.sum()
-
-        indices = np.random.choice(N, batch_size, p=P)
-        samples = [self.memory[idx] for idx in indices]
-
-        self.beta = min(1.-self.epsilon, self.beta+self.beta_annealing)
-
-        # compute importance sampling weight
-        weights = (N * P[indices]) ** (-self.beta)
-        weights /= weights.max()
-        weights = np.array(weights, dtype=np.float32)
-
-        states, actions, rewards, next_states, dones = zip(*samples)
-
-        states = torch.tensor(np.concatenate(states),dtype=torch.float32).to(self.device)
-        next_states = torch.tensor(np.concatenate(next_states),dtype=torch.float32).to(self.device)
-        actions = torch.tensor(np.concatenate(actions),dtype=torch.float32).to(self.device)
-        rewards = torch.tensor(rewards,dtype=torch.float32).unsqueeze(1).to(self.device)
-        dones = torch.tensor(dones,dtype=torch.float32).unsqueeze(1).to(self.device)
-        weights = torch.tensor(weights,dtype=torch.float32).to(self.device)
-        batch = states, actions, rewards, next_states, dones
-
-        return batch, indices, weights
-
-    def update_priority(self, batch_indices, batch_priorities):
-        for idx, prio in zip(batch_indices, batch_priorities):
-            self.priorities[idx] = abs(prio)+self.epsilon
-
-    def __len__(self):
-        return len(self.memory)
+    def size(self):
+        return min(self.max_size, self.data_idx)
 
 class PPOActor(nn.Module):
     def __init__(self, state_dim, action_dim, hidden_size=256):
@@ -111,9 +64,10 @@ class PPOActor(nn.Module):
         self.reset_parameters()
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.fc1.weight)
-        torch.nn.init.xavier_uniform_(self.fc2.weight)
-        torch.nn.init.xavier_uniform_(self.mu.weight)
+        for layer in self.modules():
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight)
+                layer.bias.data.zero_()
 
     def forward(self, states):
         x = torch.tanh(self.fc1(states))
@@ -202,12 +156,13 @@ class VCritic(nn.Module):
         self.v = nn.Linear(hidden_size, 1)
 
     def reset_parameters(self):
-        torch.nn.init.xavier_uniform_(self.fc1.weight)
-        torch.nn.init.xavier_uniform_(self.fc2.weight)
-        torch.nn.init.xavier_uniform_(self.v.weight)
+        for layer in self.modules():
+            if isinstance(layer, nn.Linear):
+                nn.init.orthogonal_(layer.weight)
+                layer.bias.data.zero_()
 
     def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = torch.tanh(self.fc1(x))
+        x = torch.tanh(self.fc2(x))
         v = self.v(x)
         return v

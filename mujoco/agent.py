@@ -3,6 +3,7 @@ import random
 import numpy as np
 import torch
 from torch.optim import Adam
+from rltorch.memory import MultiStepMemory, PrioritizedMemory
 
 from models import *
 from utils import *
@@ -25,9 +26,9 @@ class PPOAgent:
         self.ent_coef = 0.01
         self.critic_coef = 0.5
         self.lr = 0.0003
-        self.clip_param = 0.2
         self.max_grad_norm = 0.5
         self.max_clip = 0.2
+        self.reward_scaling = 0.1
         self.gamma = 0.99
         self.lam = 0.95
         self.log_interval = 10
@@ -43,11 +44,13 @@ class PPOAgent:
         self.policy_optimizer = Adam(self.policy.parameters(), lr=self.lr)
         self.critic_optimizer = Adam(self.critic.parameters(), lr=self.lr)
 
-        self.memory = ReplayBuffer(self.traj_len, self.device)
+        self.memory = ReplayBuffer(True, self.traj_len, self.env.observation_space.shape[0], self.env.action_space.shape[0])
 
         self.train_rewards = RunningMeanStats(self.log_interval)
+        self.state_rms = RunningMeanStd(env.observation_space.shape[0])
         self.steps = 0
         self.episodes = 0
+        self.best_reward = 0.
 
     def get_gae(self, states, rewards, next_states, dones):
         values = self.critic(states).detach()
@@ -66,20 +69,21 @@ class PPOAgent:
         return values, advantages
 
     def learn(self):
-        states, actions, rewards, next_states, dones = self.memory.get_all()
+        data = self.memory.sample(shuffle=False)
+        states, actions, rewards, next_states, dones, old_log_probs = convert_to_tensor(self.device, data['state'],
+                                                                                        data['action'], data['reward'],
+                                                                                        data['next_state'],
+                                                                                        data['done'], data['log_prob'])
 
         old_values, advantages = self.get_gae(states, rewards, next_states, dones)
         returns = advantages + old_values
         advantages = (advantages - advantages.mean())/(advantages.std()+1e-3)
-        old_mus, old_sigmas = self.policy(states)
-        old_dist = torch.distributions.Normal(old_mus, old_sigmas)
-        old_log_probs = old_dist.log_prob(actions).sum(1, keepdim=True)
 
         for i in range(self.train_epoch):
             for state, action, advantage, return_, old_value, old_log_prob \
                 in make_mini_batch(self.batch_size, states, actions, advantages, returns, old_values, old_log_probs):
                 curr_mu, curr_sigma = self.policy(state)
-                value = self.critic(state)
+                value = self.critic(state).float()
                 curr_dist = torch.distributions.Normal(curr_mu, curr_sigma)
                 entropy = curr_dist.entropy() * self.ent_coef
                 curr_log_prob = curr_dist.log_prob(action).sum(1, keepdim=True)
@@ -108,35 +112,41 @@ class PPOAgent:
 
     def run(self):
         episode_reward = 0.
-        episode_steps = 0
-        state = self.env.reset()
+        state_lst = []
+        state_ = (self.env.reset())
+        state = np.clip((state_ - self.state_rms.mean) / (self.state_rms.var ** 0.5 + 1e-8), -5, 5)
         while True:
             for t in range(self.traj_len):
-                mu, sigma = self.policy(torch.FloatTensor(state).unsqueeze(0).to(self.device))
+                state_lst.append(state_)
+                mu, sigma = self.policy(torch.from_numpy(state).float().to(self.device))
                 dist = torch.distributions.Normal(mu, sigma[0])
-                action = dist.sample().cpu().numpy().reshape(-1)
-                next_state, reward, done, _ = self.env.step(action)
+                action = dist.sample()
+                log_prob = dist.log_prob(action).sum(-1, keepdim=True)
+                next_state_, reward, done, _ = self.env.step(action.cpu().numpy())
+                next_state = np.clip((next_state_ - self.state_rms.mean) / (self.state_rms.var ** 0.5 + 1e-8), -5, 5)
                 self.steps += 1
-                episode_steps += 1
                 episode_reward += reward
-
-                self.memory.append(state, action, reward, next_state, done)
+                transition = make_transition(state, action.cpu().numpy(), np.array([reward * self.reward_scaling]),
+                                             next_state, np.array([done]), log_prob.detach().cpu().numpy())
+                self.memory.append(transition)
+                state_ = next_state_
                 state = next_state
 
                 if done:
                     self.train_rewards.append(episode_reward)
                     self.episodes += 1
-                    print(f'episode: {self.episodes:<4}  '
-                          f'episode steps: {episode_steps:<4}  '
-                          f'reward: {episode_reward:<5.1f}')
+                    # print(f'episode: {self.episodes:<4}  '
+                    #       f'episode steps: {episode_steps:<4}  '
+                    #       f'reward: {episode_reward:<5.1f}')
                     # reset episode
                     episode_reward = 0.
-                    episode_steps = 0
-                    state = self.env.reset()
+                    state_ = (self.env.reset())
+                    state = np.clip((state_ - self.state_rms.mean) / (self.state_rms.var ** 0.5 + 1e-8), -5, 5)
 
             self.learn()
+            self.state_rms.update(np.vstack(state_lst))
+            # print("# of episode :{}, avg score : {:.1f}".format(self.episodes, np.mean(self.train_rewards.stats)))
             self.evaluate()
-            self.save_models()
 
             if self.steps > self.num_steps:
                 break
@@ -146,13 +156,16 @@ class PPOAgent:
         returns = np.zeros((episodes,), dtype=np.float32)
 
         for i in range(episodes):
-            state = self.env.reset()
+            state_ = (self.env.reset())
+            state = np.clip((state_ - self.state_rms.mean) / (self.state_rms.var ** 0.5 + 1e-8), -5, 5)
             episode_reward = 0.
             done = False
             while not done:
                 mu, sigma = self.policy(torch.FloatTensor(state).unsqueeze(0).to(self.device))
-                action = mu.detach().cpu().numpy().reshape(-1)
-                next_state, reward, done, _ = self.env.step(action)
+                dist = torch.distributions.Normal(mu, sigma[0])
+                action = dist.sample().cpu().numpy().reshape(-1)
+                next_state_, reward, done, _ = self.env.step(action)
+                next_state = np.clip((next_state_ - self.state_rms.mean) / (self.state_rms.var ** 0.5 + 1e-8), -5, 5)
                 episode_reward += reward
                 state = next_state
             returns[i] = episode_reward
@@ -162,6 +175,10 @@ class PPOAgent:
         print(f'Num steps: {self.steps:<5}  '
               f'reward: {mean_return:<5.1f}')
         print('-' * 60)
+        if mean_return > self.best_reward:
+            print("New best reward, save model to disk.")
+            self.save_models()
+            self.best_reward = mean_return
 
     def save_models(self):
         torch.save(self.policy.state_dict(), os.path.join(self.model_dir, 'policy.pth'))
@@ -182,7 +199,7 @@ class SACAgent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # hyper-parameters
-        self.num_steps = 3e6
+        self.num_steps = 3000000
         self.batch_size = 256
         self.lr = 0.0003
         self.hidden_size = 256
@@ -195,7 +212,8 @@ class SACAgent:
         self.beta_annealing = 0.0001
         self.start_steps = 10000
         self.log_interval = 10
-        self.eval_interval = 1000
+        self.eval_interval = 10000
+        self.multi_step = 1
 
         # networks
         self.policy = SACActor(self.env.observation_space.shape[0],
@@ -225,15 +243,21 @@ class SACAgent:
         else:
             self.alpha = torch.tensor(self.ent_coef).to(self.device)
 
-        if self.per:
-            self.memory = PrioritizedReplay(self.memory_size, self.device, self.alpha_mem, self.beta, self.beta_annealing)
+        if per:
+            self.memory = PrioritizedMemory(
+                self.memory_size, self.env.observation_space.shape,
+                self.env.action_space.shape, self.device, self.gamma, self.multi_step,
+                alpha=self.alpha_mem, beta=self.beta, beta_annealing=self.beta_annealing)
         else:
-            self.memory = ReplayBuffer(self.memory_size, self.device)
+            self.memory = MultiStepMemory(
+                self.memory_size, self.env.observation_space.shape,
+                self.env.action_space.shape, self.device, self.gamma, self.multi_step)
 
         self.train_rewards = RunningMeanStats(self.log_interval)
         self.steps = 0
         self.learning_steps = 0
         self.episodes = 0
+        self.best_reward = 0.
 
     def run(self):
         while True:
@@ -329,17 +353,16 @@ class SACAgent:
                 target_q = self.calc_target_q(*batch)
                 error_q1 = torch.abs(curr_q1.detach() - target_q)
                 error_q2 = torch.abs(curr_q2.detach() - target_q)
-                error = (error_q1 + error_q2) / 2
-                self.memory.append(state, action, reward, next_state, masked_done, error.squeeze().detach().cpu().numpy())
+                error = ((error_q1 + error_q2) / 2).item()
+                self.memory.append(state, action, reward, next_state, masked_done, error, episode_done=done)
             else:
-                self.memory.append(state, action, reward, next_state, masked_done)
+                self.memory.append(state, action, reward, next_state, masked_done, episode_done=done)
 
             if self.is_update():
                 self.learn()
 
             if self.steps % self.eval_interval == 0:
                 self.evaluate()
-                self.save_models()
 
             state = next_state
 
@@ -372,7 +395,7 @@ class SACAgent:
             self.alpha = self.log_alpha.exp()
 
         if self.per:
-            self.memory.update_priority(indices, errors.squeeze().detach().cpu().numpy())
+            self.memory.update_priority(indices, errors.cpu().numpy())
 
     def evaluate(self):
         episodes = 10
@@ -394,6 +417,10 @@ class SACAgent:
         print(f'Num steps: {self.steps:<5}  '
               f'reward: {mean_return:<5.1f}')
         print('-' * 60)
+        if mean_return > self.best_reward:
+            print("New best reward, save model to disk.")
+            self.save_models()
+            self.best_reward = mean_return
 
     def save_models(self):
         torch.save(self.policy.state_dict(), os.path.join(self.model_dir, 'policy.pth'))

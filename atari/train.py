@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 local_dir = os.path.join('local', args.env_name,
-   f'seed{args.seed}-duel{args.is_dueling}-double{args.double}-per{args.is_per}-{datetime.now().strftime("%Y%m%d-%H%M")}')
+   f'seed{args.seed}-duel{args.is_dueling}-double{args.is_double}-per{args.is_per}-{datetime.now().strftime("%Y%m%d-%H%M")}')
 model_dir = os.path.join(local_dir, "model")
 os.makedirs(model_dir, exist_ok=True)
 
@@ -152,9 +152,9 @@ for step in range(NUM_STEPS):
     if done:
         episodes += 1
         training_rewards.append(episode_reward)
-        print(f'episode: {episodes:<4}  '
-              f'episode steps: {episode_len:<4}  '
-              f'reward: {np.mean(training_rewards):<5.1f}')
+        # print(f'episode: {episodes:<4}  '
+        #       f'episode steps: {episode_len:<4}  '
+        #       f'reward: {np.mean(training_rewards):<5.1f}')
 
         env.reset()
         episode_len = 0
