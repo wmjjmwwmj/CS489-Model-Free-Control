@@ -9,8 +9,9 @@ from models import *
 from utils import *
 
 class PPOAgent:
-    def __init__(self, env, local_dir=None):
+    def __init__(self, env, n_steps, local_dir=None):
         self.env = env
+        self.num_steps = n_steps
         self.local_dir = local_dir
         self.model_dir = os.path.join(local_dir, "model")
         os.makedirs(self.model_dir, exist_ok=True)
@@ -18,7 +19,6 @@ class PPOAgent:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # hyper-parameters
-        self.num_steps = 3e6
         self.batch_size = 64
         self.hidden_size = 256
         self.traj_len = 2048
@@ -193,18 +193,18 @@ class PPOAgent:
         self.env.close()
 
 class SACAgent:
-    def __init__(self, env, entropy_tuning=True, per=False, local_dir=None):
+    def __init__(self, env, entropy_tuning=True, per=False, n_steps=3000000, local_dir=None):
         self.env = env
         self.entropy_tuning = entropy_tuning
         self.per = per
         self.local_dir = local_dir
+        self.num_steps = n_steps
         self.model_dir = os.path.join(local_dir, "model")
         os.makedirs(self.model_dir, exist_ok=True)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         # hyper-parameters
-        self.num_steps = 3000000
         self.batch_size = 256
         self.lr = 0.0003
         self.hidden_size = 256

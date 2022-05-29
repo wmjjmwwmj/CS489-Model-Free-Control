@@ -9,8 +9,9 @@ parser = argparse.ArgumentParser(description="parameter setting for mujoco")
 parser.add_argument('--env_name', type=str, default="Hopper-v2")
 parser.add_argument('--seed', type=int, default=None)
 parser.add_argument('--method', choices=['ppo', 'sac'], default='sac')
-parser.add_argument('--is_per', type=bool, default=False)
-parser.add_argument('--entropy_tuning', type=bool, default=True)
+parser.add_argument('--is_per', action='store_true')
+parser.add_argument('--entropy_tuning', action='store_true')
+parser.add_argument('--n_steps', type=int, default=3000000)
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -31,5 +32,6 @@ env = gym.make(args.env_name)
 local_dir = os.path.join('local', args.env_name,
    f'{args.method}-seed{args.seed}-per{args.is_per}-tune{args.entropy_tuning}-{datetime.now().strftime("%Y%m%d-%H%M")}')
 
-agent = SACAgent(env, args.entropy_tuning, args.is_per, local_dir) if args.method == 'sac' else PPOAgent(env, local_dir)
+agent = SACAgent(env, args.entropy_tuning, args.is_per, args.n_steps, local_dir) if args.method == 'sac' \
+    else PPOAgent(env, args.n_steps, local_dir)
 agent.run()

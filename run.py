@@ -3,7 +3,7 @@ import argparse
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--env_name', type=str, default='BreakoutNoFrameskip-v4')
-parser.add_argument('--seed', type=int, default=114514)
+parser.add_argument('--seed', type=int, default=42)
 args = parser.parse_args()
 
 assert args.env_name in ["VideoPinball-ramNoFrameskip-v4", "BreakoutNoFrameskip-v4", "PongNoFrameskip-v4",

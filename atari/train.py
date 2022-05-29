@@ -12,9 +12,9 @@ from atari_wrappers import wrap_deepmind, make_atari
 parser = argparse.ArgumentParser(description="parameter setting for atari")
 parser.add_argument('--env_name', type=str, default="BreakoutNoFrameskip-v4")
 parser.add_argument('--seed', type=int, default=None)
-parser.add_argument('--is_dueling', type=bool, default=False)
-parser.add_argument('--is_double', type=bool, default=False)
-parser.add_argument('--is_per', type=bool, default=False)
+parser.add_argument('--is_dueling', action='store_true')
+parser.add_argument('--is_double', action='store_true')
+parser.add_argument('--is_per', action='store_true')
 args = parser.parse_args()
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
