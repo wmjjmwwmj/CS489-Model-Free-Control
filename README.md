@@ -67,9 +67,9 @@ We list part of our experimental results here for more intuition. Find more deta
 
 The testing reward curves:
 
-<center class="atari_score">
-<img src="results/breakout_score.png" alt="breakout_score" width="300"/><img src="results/boxing_score.png" alt="boxing_score" width="300"/><img src="results/pong_score.png" alt="pong_score" width="300"/>
-</center>
+<figure class="atari_score">
+<img src="results/breakout_score.png" alt="breakout_score" width="100"/><img src="results/boxing_score.png" alt="boxing_score" width="100"/><img src="results/pong_score.png" alt="pong_score" width="100"/>
+</figure>
 
 The simulated results:
 
