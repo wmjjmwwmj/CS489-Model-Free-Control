@@ -67,18 +67,15 @@ We list part of our experimental results here for more intuition. Find more deta
 
 The testing reward curves:
 
-<figure class="atari_score">
-   <img src="results/breakout_score.png" alt="breakout_score" style="zoom:23%;"><img src="results/boxing_score.png" alt="boxing_score" style="zoom:20%;"><img src="results/pong_score.png" alt="pong_score" style="zoom:20%;" />
+<center class="atari_score">
+<img src="results/breakout_score.png" alt="breakout_score" style="zoom:23%;"/><img src="results/boxing_score.png" alt="boxing_score" style="zoom:20%;"/><img src="results/pong_score.png" alt="pong_score" style="zoom:20%;"/>
+</center>
 
 The simulated results:
 
-<figure class="atari_simulate">
-  <img src="results/Breakout.gif" alt="breakout" style="zoom:70%;" />
-  <img src="results/Boxing.gif" alt="boxing" style="zoom:70%;" />
-  <img src="results/Pong.gif" alt="pong" style="zoom:70%;" />
-</figure>
-
-
+<center class="atari_simulate">
+  <img src="results/Breakout.gif" alt="breakout" style="zoom:70%;" /><img src="results/Boxing.gif" alt="boxing" style="zoom:70%;" /><img src="results/Pong.gif" alt="pong" style="zoom:70%;" />
+</center>
 
  The environments are ordered by Breakout, Boxing, and Pong.
 
@@ -86,19 +83,15 @@ The simulated results:
 
 The testing reward curves:
 
-<figure class="mujoco_score">
-  <img src="results/hopper_score.png" alt="hopper_score" style="zoom:30%;" />
-  <img src="results/humanoid_score.png" alt="humanoid_score" style="zoom:30%;" />
-  <img src="results/ant_score.png" alt="ant_score" style="zoom:30%;" />
-  <img src="results/halfcheetah_score.png" alt="halfcheetah_score" style="zoom:30%;" />
+<center class="mujoco_score">
+  <img src="results/hopper_score.png" alt="hopper_score" style="zoom:30%;" /><img src="results/humanoid_score.png" alt="humanoid_score" style="zoom:30%;" /><img src="results/ant_score.png" alt="ant_score" style="zoom:30%;" /><img src="results/halfcheetah_score.png" alt="halfcheetah_score" style="zoom:30%;" />
+</center>
 
 The simulatied results:
 
-<figure class="mujoco_simulate">
-  <img src="results/hopper.gif" alt="hopper" style="zoom:100%;" />
-  <img src="results/humanoid.gif" alt="humanoid" style="zoom:100%;" />
-  <img src="results/ant.gif" alt="ant" style="zoom:100%;" />
-  <img src="results/halfcheetah.gif" alt="halfcheetah" style="zoom:100%;" />
+<center class="mujoco_simulate">
+  <img src="results/hopper.gif" alt="hopper" style="zoom:100%;" /><img src="results/humanoid.gif" alt="humanoid" style="zoom:100%;" /><img src="results/ant.gif" alt="ant" style="zoom:100%;" /><img src="results/halfcheetah.gif" alt="halfcheetah" style="zoom:100%;" />
+</center>
 
   The environments are ordered by Hopper, Humanoid, Ant, and Halfcheetah.
 
